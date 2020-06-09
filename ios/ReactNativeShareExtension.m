@@ -14,6 +14,16 @@ NSExtensionContext* extensionContext;
     NSString* value;
 }
 
+- (BOOL)isContentValid {
+    // Do validation of contentText and/or NSExtensionContext attachments here
+    return YES;
+}
+
++ (BOOL)requiresMainQueueSetup
+{
+    return YES;
+}
+
 - (UIView*) shareView {
     return nil;
 }
@@ -79,12 +89,13 @@ RCT_REMAP_METHOD(data,
         [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
             if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
+
                 [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
                     NSURL *url = (NSURL *)item;
                     index += 1;
 
                     [itemArray addObject: @{
-                                            @"type": [[[url absoluteString] pathExtension] lowercaseString],
+                                            @"type": @"image/png",
                                             @"value": [url absoluteString]
                                             }];
                     if (callback && (index == [attachments count])) {
