@@ -5,7 +5,6 @@
 #define URL_IDENTIFIER @"public.url"
 #define IMAGE_IDENTIFIER @"public.image"
 #define TEXT_IDENTIFIER (NSString *)kUTTypePlainText
-#define DATA_IDENTIFIER (NSString *)kUTTypePropertyList
 
 NSExtensionContext* extensionContext;
 
@@ -13,16 +12,6 @@ NSExtensionContext* extensionContext;
     NSTimer *autoTimer;
     NSString* type;
     NSString* value;
-}
-
-- (BOOL)isContentValid {
-    // Do validation of contentText and/or NSExtensionContext attachments here
-    return YES;
-}
-
-+ (BOOL)requiresMainQueueSetup
-{
-    return YES;
 }
 
 - (UIView*) shareView {
@@ -66,88 +55,78 @@ RCT_REMAP_METHOD(data,
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject)
 {
-    [self extractDataFromContext: extensionContext withCallback:^(NSString* val, NSString* contentType, NSException* err) {
+    [self extractDataFromContext: extensionContext withCallback:^(NSArray* items, NSException* err) {
         if(err) {
             reject(@"error", err.description, nil);
         } else {
-            resolve(@{
-                      @"type": contentType,
-                      @"value": val
-                      });
+            resolve(items);
         }
     }];
 }
 
-- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSString *value, NSString* contentType, NSException *exception))callback {
+- (void)extractDataFromContext:(NSExtensionContext *)context withCallback:(void(^)(NSArray *items, NSException *exception))callback {
     @try {
+        __block NSMutableArray *itemArray = [NSMutableArray new];
+        NSExtensionItem *item = [context.inputItems firstObject];
 
-        NSItemProvider *urlProvider = nil;
-        NSItemProvider *imageProvider = nil;
-        NSItemProvider *textProvider = nil;
-        NSItemProvider *dataProvider = nil;
+        NSArray *attachments = item.attachments;
 
-        for (NSExtensionItem *item in context.inputItems) {
-          for (NSItemProvider *provider in item.attachments) {
-            if ([provider hasItemConformingToTypeIdentifier:DATA_IDENTIFIER]){
-                dataProvider = provider;
-                // break;
+        __block NSItemProvider *urlProvider = nil;
+        __block NSItemProvider *imageProvider = nil;
+        __block NSItemProvider *textProvider = nil;
+        __block NSUInteger index = 0;
+
+        [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
+            if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
+                imageProvider = provider;
+                [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                    NSURL *url = (NSURL *)item;
+                    index += 1;
+
+                    [itemArray addObject: @{
+                                            @"type": [[[url absoluteString] pathExtension] lowercaseString],
+                                            @"value": [url absoluteString]
+                                            }];
+                    if (callback && (index == [attachments count])) {
+                        callback(itemArray, nil);
+                    }
+
+                }];
             } else if([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
                 urlProvider = provider;
-                // break;
+                index += 1;
+                [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                    NSURL *url = (NSURL *)item;
+                    [itemArray addObject: @{
+                                            @"type": @"text/plain",
+                                            @"value": [url absoluteString]
+                                            }];
+                    if (callback && (index == [attachments count])) {
+                        callback(itemArray, nil);
+                    }
+                }];
             } else if ([provider hasItemConformingToTypeIdentifier:TEXT_IDENTIFIER]){
                 textProvider = provider;
-                // break;
-            } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
-                imageProvider = provider;
-                // break;
+                [textProvider loadItemForTypeIdentifier:TEXT_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                    NSString *text = (NSString *)item;
+                    index += 1;
+                    [itemArray addObject: @{
+                                            @"type": @"text/plain",
+                                            @"value": text
+                                            }];
+                    if (callback && (index == [attachments count])) {
+                        callback(itemArray, nil);
+                    }
+                }];
+            } else {
+                index += 1;
             }
-          }
-        }
-
-        if(dataProvider) {
-            [dataProvider loadItemForTypeIdentifier:DATA_IDENTIFIER options:nil completionHandler:^(NSDictionary *item, NSError *error) {
-                NSDictionary *results = (NSDictionary *)item;
-                NSDictionary *jsPreprocessingResults = results[NSExtensionJavaScriptPreprocessingResultsKey];
-                NSString *documentData = [[results objectForKey:NSExtensionJavaScriptPreprocessingResultsKey] objectForKey:@"documentData"];
-                // See /ios/PlaypostShareExtension/GetDocumentData.js for which data we get
-
-                if(callback) {
-                    callback(documentData, @"text/json", nil);
-                }
-            }];
-        } else if(urlProvider) {
-            [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                NSURL *url = (NSURL *)item;
-
-                if(callback) {
-                    callback([url absoluteString], @"text/plain", nil);
-                }
-            }];
-        } else if (textProvider) {
-            [textProvider loadItemForTypeIdentifier:TEXT_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                NSString *text = (NSString *)item;
-
-                if(callback) {
-                    callback(text, @"text/plain", nil);
-                }
-            }];
-        } else if (imageProvider) {
-            [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                NSURL *url = (NSURL *)item;
-
-                if(callback) {
-                    callback([url absoluteString], [[[url absoluteString] pathExtension] lowercaseString], nil);
-                }
-            }];
-        } else {
-            if(callback) {
-                callback(nil, nil, [NSException exceptionWithName:@"Error" reason:@"couldn't find provider" userInfo:nil]);
-            }
-        }
+        }];
+        //        }
     }
     @catch (NSException *exception) {
         if(callback) {
-            callback(nil, nil, exception);
+            callback(nil, exception);
         }
     }
 }
