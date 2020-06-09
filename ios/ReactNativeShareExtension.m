@@ -80,6 +80,7 @@ RCT_REMAP_METHOD(data,
             if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
                 [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                    NSURL *url = (NSURL *)item;
                     index += 1;
 
                     [itemArray addObject: @{
