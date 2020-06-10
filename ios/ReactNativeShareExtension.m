@@ -87,35 +87,58 @@ RCT_REMAP_METHOD(data,
         __block NSUInteger index = 0;
 
         [attachments enumerateObjectsUsingBlock:^(NSItemProvider *provider, NSUInteger idx, BOOL *stop) {
-             if ([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
-                urlProvider = provider;
-                index += 1;
-                [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                    NSURL *url = (NSURL *)item;
-                    [itemArray addObject: @{
-                                            @"type": @"text/plain",
-                                            @"value": [url absoluteString]
-                                            }];
-                    if (callback && (index == [attachments count])) {
-                        callback(itemArray, nil);
-                    }
-                }];
-            } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
+         if ([provider hasItemConformingToTypeIdentifier:URL_IDENTIFIER]) {
+            urlProvider = provider;
+            index += 1;
+            [urlProvider loadItemForTypeIdentifier:URL_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
+                NSURL *url = (NSURL *)item;
+                [itemArray addObject: @{
+                                        @"type": @"text/plain",
+                                        @"value": [url absoluteString]
+                                         }];
+                 if (callback && (index == [attachments count])) {
+                     callback(itemArray, nil);
+                 }
+             }];
+          } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
-                index += 1;
-
                 [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
-                    NSURL *url = (NSURL *)item;
+                    /**
+                     * Save the image to NSTemporaryDirectory(), which cleans itself tri-daily.
+                     * This is necessary as the iOS 11 screenshot editor gives us a UIImage, while
+                     * sharing from Photos and similar apps gives us a URL
+                     * Therefore the solution is to save a UIImage, either way, and return the local path to that temp UIImage
+                     * This path will be sent to React Native and can be processed and accessed RN side.
+                     **/
+
+                    UIImage *sharedImage;
+                    NSString *filename;
+
+                    if ([(NSObject *)item isKindOfClass:[UIImage class]]){
+                        sharedImage = (UIImage *)item;
+                        NSString *name = @"RNSE_TEMP_IMG_";
+                        NSString *nbFiles = [NSString stringWithFormat:@"%@",  @(index)];
+                        NSString *fullname = [name stringByAppendingString:(nbFiles)];
+                        filename = [fullname stringByAppendingPathExtension:@"png"];
+                    }else if ([(NSObject *)item isKindOfClass:[NSURL class]]){
+                        NSURL* url = (NSURL *)item;
+                        filename = [[url lastPathComponent] lowercaseString];
+                        NSData *data = [NSData dataWithContentsOfURL:url];
+                        sharedImage = [UIImage imageWithData:data];
+                    }
+                    NSString *filePath = [NSTemporaryDirectory() stringByAppendingPathComponent:filename];
+
+                    [UIImageJPEGRepresentation(sharedImage, 1.0) writeToFile:filePath atomically:YES];
+                    index += 1;
 
                     [itemArray addObject: @{
-                                            @"type": [[[url absoluteString] pathExtension] lowercaseString],
-                                            @"value": [url absoluteString]
-                                            }];
-                    if (callback && (index == [attachments count])) {
-                        callback(itemArray, nil);
-                    }
-
-                }];
+                                            @"type": [filePath pathExtension],
+                                            @"value": filePath
+                                                }];
+                        if (callback && (index == [attachments count])) {
+                            callback(itemArray, nil);
+                        }
+                    }];
             } else if ([provider hasItemConformingToTypeIdentifier:TEXT_IDENTIFIER]){
                 textProvider = provider;
                 [textProvider loadItemForTypeIdentifier:TEXT_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
