@@ -95,11 +95,12 @@ RCT_REMAP_METHOD(data,
                 [itemArray addObject: @{
                                         @"type": @"text/plain",
                                         @"value": [url absoluteString]
-
-                if (callback && (index == [attachments count])) {
-                    callback(itemArray, nil);
-                }
-          } else  if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
+                                         }];
+                 if (callback && (index == [attachments count])) {
+                     callback(itemArray, nil);
+                 }
+             }];
+          } else if ([provider hasItemConformingToTypeIdentifier:IMAGE_IDENTIFIER]){
                 imageProvider = provider;
                 [imageProvider loadItemForTypeIdentifier:IMAGE_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
                     /**
@@ -133,11 +134,11 @@ RCT_REMAP_METHOD(data,
                     [itemArray addObject: @{
                                             @"type": [filePath pathExtension],
                                             @"value": filePath
-
-                    if (callback && (index == [attachments count])) {
-                        callback(itemArray, nil);
-                    }
-                }];
+                                                }];
+                        if (callback && (index == [attachments count])) {
+                            callback(itemArray, nil);
+                        }
+                    }];
             } else if ([provider hasItemConformingToTypeIdentifier:TEXT_IDENTIFIER]){
                 textProvider = provider;
                 [textProvider loadItemForTypeIdentifier:TEXT_IDENTIFIER options:nil completionHandler:^(id<NSSecureCoding> item, NSError *error) {
