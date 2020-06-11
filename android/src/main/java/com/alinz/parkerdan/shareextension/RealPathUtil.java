@@ -1,5 +1,6 @@
 package com.alinz.parkerdan.shareextension;
 
+import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.database.Cursor;
@@ -14,7 +15,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.UUID;
 
 public class RealPathUtil {
 	public static String getRealPathFromURI(final Context context, final Uri uri) {
@@ -68,7 +68,7 @@ public class RealPathUtil {
 		}
 		// MediaStore (and general)
 		else if ("content".equalsIgnoreCase(uri.getScheme())) {
-			return getImagePath(context, uri);
+			return getContentPath(context, uri);
 		}
 		// File
 		else if ("file".equalsIgnoreCase(uri.getScheme())) {
@@ -138,7 +138,7 @@ public class RealPathUtil {
 		return "com.android.providers.media.documents".equals(uri.getAuthority());
 	}
 
-	public static String getImagePath(Context context, Uri uri) {
+	public static String getContentPath(Context context, Uri uri) {
 		if (isGoogleOldPhotosUri(uri)) {
 			// return http path, then download file.
 			return uri.getLastPathSegment();
@@ -177,45 +177,99 @@ public class RealPathUtil {
 	}
 
 	private static String copyFile(Context context, Uri uri) {
+		// path could not be retrieved using ContentResolver, therefore copy file to accessible cache using streams
+		String fileName = getContentName(context.getContentResolver(), uri);
+		File cacheDir = getDocumentCacheDir(context);
+		File file = generateFileName(fileName, cacheDir);
+		String destinationPath = null;
+		if (file != null) {
+			destinationPath = file.getAbsolutePath();
+			saveFileFromUri(context, uri, destinationPath);
+		}
 
-		String filePath;
-		InputStream inputStream = null;
-		BufferedOutputStream outStream = null;
+		return destinationPath;
+	}
+
+
+	private static String getContentName(ContentResolver resolver, Uri uri) {
+		Cursor cursor = resolver.query(uri, null, null, null, null);
+		cursor.moveToFirst();
+		int nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME);
+		if (nameIndex >= 0) {
+			String name = cursor.getString(nameIndex);
+			cursor.close();
+			return name;
+		}
+		return null;
+	}
+
+	private static void saveFileFromUri(Context context, Uri uri, String destinationPath) {
+		InputStream is = null;
+		BufferedOutputStream bos = null;
 		try {
-			inputStream = context.getContentResolver().openInputStream(uri);
-
-			File extDir = context.getExternalFilesDir(null);
-			filePath = extDir.getAbsolutePath() + "/IMG_" + UUID.randomUUID().toString() + ".jpg";
-			outStream = new BufferedOutputStream(new FileOutputStream
-					(filePath));
-
-			byte[] buf = new byte[2048];
-			int len;
-			while ((len = inputStream.read(buf)) > 0) {
-				outStream.write(buf, 0, len);
-			}
-
+			is = context.getContentResolver().openInputStream(uri);
+			bos = new BufferedOutputStream(new FileOutputStream(destinationPath, false));
+			byte[] buf = new byte[1024];
+			is.read(buf);
+			do {
+				bos.write(buf);
+			} while (is.read(buf) != -1);
 		} catch (IOException e) {
 			e.printStackTrace();
-			filePath = "";
 		} finally {
 			try {
-				if (inputStream != null) {
-					inputStream.close();
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-			try {
-				if (outStream != null) {
-					outStream.close();
-				}
+				if (is != null) is.close();
+				if (bos != null) bos.close();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
+	}
 
-		return filePath;
+	public static final String DOCUMENTS_DIR = "documents";
+
+	public static File getDocumentCacheDir(Context context) {
+		File dir = new File(context.getCacheDir(), DOCUMENTS_DIR);
+		if (!dir.exists()) {
+			dir.mkdirs();
+		}
+		return dir;
+	}
+
+	public static File generateFileName(String name, File directory) {
+		if (name == null) {
+			return null;
+		}
+
+		File file = new File(directory, name);
+
+		if (file.exists()) {
+			String fileName = name;
+			String extension = "";
+			int dotIndex = name.lastIndexOf('.');
+			if (dotIndex > 0) {
+				fileName = name.substring(0, dotIndex);
+				extension = name.substring(dotIndex);
+			}
+
+			int index = 0;
+
+			while (file.exists()) {
+				index++;
+				name = fileName + '(' + index + ')' + extension;
+				file = new File(directory, name);
+			}
+		}
+
+		try {
+			if (!file.createNewFile()) {
+				return null;
+			}
+		} catch (IOException e) {
+			return null;
+		}
+
+		return file;
 	}
 
 }
