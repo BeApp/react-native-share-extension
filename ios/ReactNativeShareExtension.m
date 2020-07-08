@@ -158,6 +158,9 @@ RCT_REMAP_METHOD(data,
                 }];
             } else {
                 index += 1;
+                if (index == [attachments count]) {
+                    callback(nil, nil);
+                }
             }
         }];
     }
