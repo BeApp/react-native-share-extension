@@ -49,6 +49,10 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(close) {
     [extensionContext completeRequestReturningItems:nil
                                   completionHandler:nil];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        exit(0);
+    });
 }
 
 
